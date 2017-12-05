@@ -12,7 +12,11 @@ void shiftOUT(byte d)
   boolean bitVal;
   output = d | (GRID[grid] << 8); // grid is incremented in ISR
   if(grid%2 == 0) output |= DOT; // test this for brightness
-  
+  if(grid == 0 && d == ZERO){
+    digitalWrite(BLANK,HIGH);
+  } else {
+    digitalWrite(BLANK,LOW);
+  }
   for(int i=11; i>=0; i--){
     digitalWrite(CLK,LOW);  // prime the pump
     bitVal = bitRead(output,i);

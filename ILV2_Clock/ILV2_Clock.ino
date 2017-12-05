@@ -4,6 +4,7 @@
   Targets a PIC32MX250F128B with ChipKIT DP32 bootloader
   Uses the MAX6920 VFD SIPO driver
   Uses DS3231 RTC
+  Has V-Divider on Battery for Battery level sensing
   
   
   Made by Joel Murphy
@@ -31,11 +32,14 @@ int SWITCH[2] = {SW_1,SW_2};
 boolean lastSwitchState[2] = {false,false};
 unsigned long lastBlink;  
 int blinkTimer = 300; // LED blink rate
-int testTimer = 400;  // test timing
+int testTimer = 1000;  // test timing
 unsigned int lastTime = 0; // test timing
 int testCounter = 0;
 byte nibbleCounter = 0;
-int testToRun = 0;
+int progToRun = 0;
+int timeToSet = 0;
+int hours;
+int mins;
 
 boolean VFD_ON = false;
 int testGrid = 0;
@@ -44,9 +48,6 @@ boolean LEDstate = false;
 
 float battVolts = 0.0;
 
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
-
 // Timer 3 Variables
 volatile uint32_t grid = 0;
 volatile boolean muxTime = false;
@@ -54,7 +55,6 @@ volatile boolean muxTime = false;
 // Timer 3 ISR
 void __attribute__((interrupt)) MUX_TIMER()
 {
-//  count++;
   muxTime = true;
   grid++;
   if(grid > 3) {grid = 0;}
@@ -75,19 +75,20 @@ void setup(){
   lastBlink = millis();
   lastTime = millis();
   digit = 0;
-  digitalWrite(LED,HIGH);
+  digitalWrite(LED,HIGH); // to show power on
+  progToRun = '4';  // prints the time to VFD
 }
 
 
 
 void loop(){
-  blink_LED();
+//  blink_LED();
   feelSwitches();
   if(muxTime) {mux();}
 
   if(millis() - lastTime > testTimer){
     lastTime = millis();
-    runTest(testToRun);
+    runProg(progToRun);
   }
 }
 
@@ -97,30 +98,28 @@ void serialEvent(){
   
   while(Serial.available()){
     char inChar = Serial.read();
-    Serial.print("in serialEvent "); Serial.println(inChar);
+//    Serial.print("in serialEvent "); Serial.println(inChar);
     
     switch (inChar){
       case 'e': enableVFD(); break;
       case 'd': disableVFD(); break;
       case '?': printVersion(); break;
       case 'b': printBatteryLevel(); break;
-      case '0': testToRun = inChar; break;
-      case '1': testToRun = inChar; break;
-      case '2': testToRun = inChar; break;
-      case '3': testToRun = inChar; break;
-      case '4': testToRun = inChar; break;
-//      case '2': testToRun = inChar; break;
+      case '0': progToRun = inChar; break;
+      case '1': progToRun = inChar; break;
+      case '2': progToRun = inChar; break;
+      case '3': progToRun = inChar; break;
+      case '4': progToRun = inChar; break;
+//      case '5': progToRun = inChar; break;
       default:
-//        Serial.print("i got "); Serial.println(inChar);
+        Serial.print("i got "); Serial.println(inChar);
         break;
     }
   }
 }
 
 void mux(){
-  
   shiftOUT(numToDisplay[grid]);
-    
   muxTime = false;
 }
 
@@ -146,31 +145,43 @@ void feelSwitches(){
       lastSwitchState[i] = switchState;
       Serial.print("Switch ");Serial.print(i+1);Serial.print(" = "); Serial.println(switchState);
       if(i == 0 && switchState == 1){
-        if(VFD_ON){
-          disableVFD();
-        }else{
-          enableVFD();
+        if(progToRun == '5'){
+          incrementTime();  // increment the time setting
+        } else if(progToRun == '4'){
+          progToRun = '2';  // set to show battery level
+        } else if(progToRun == '2'){
+          progToRun = '4';  // set to tell time
         }
       }
       if(i == 1 && switchState == 1){
-        printBatteryLevel();
-        displayBatteryLevel();
+        if(progToRun == '4'){
+          progToRun = '5';  // set time
+          hours = now.hour();
+          mins = now.minute();
+          timeToSet = 0;  // prep to set hours
+          return;
+        } else {
+          timeToSet++;
+          if(timeToSet == 2){
+            updateRTC(hours,mins);
+            progToRun = '4';  // done setting time!
+          }
         }
+        
       }
     }
   }
+}
 
 
 void getBatteryLevel(){
   int counts = analogRead(A1);
   float volts = float(counts)*(3.3/1023.0);
   battVolts = volts*2.0;
-//  Serial.print(counts);Serial.print(", ");
-//  Serial.print(volts); Serial.print(", ");
-//  Serial.print(battVolts); Serial.print(", ");
-//  Serial.println();
+  Serial.print(counts);Serial.print(", ");
+  Serial.print(volts); Serial.print(", ");
+  Serial.println(battVolts); 
 }
-
 
 void printBatteryLevel(){
   getBatteryLevel();
@@ -206,31 +217,32 @@ void printVersion(){
   Serial.println("Press '1' to count binary nibble");
   Serial.println("Press '2' to display battery level");
   Serial.println("Press '3' to run test 3");
-  Serial.println("Press '4' to run RTC Test");
-//  Serial.println("Press '1' to run test 1");
+  Serial.println("Press '4' to display RTC time");
+  Serial.println("Press '5' to set time");
+  Serial.println("Press SW1 to set hours");
+  Serial.println("\tUse SW2 to increment hours");
+  Serial.println("\tPress SW1 to set minutes");
+  Serial.println("\tUse SW2 to increment minutes");
+  Serial.println("\tPress SW1 to run clock");
+  Serial.println("Press SW2 to toggle between time and battery level");
+  
 }
 
 
 
-void runTest(char test){
+void runProg(char test){
   switch (test){
-    case '0': runTest_0(); break;
-    case '1': runTest_1(); break;
-    case '2': runTest_2(); break;
-    case '3': runTest_3(); break;
-    case '4': 
-      if (! rtc.begin()) {
-        Serial.println("Couldn't find RTC");
-      } else {
-        runTest_4(); 
-      }
-      break;
-//    case '2': runTest_2(); break;
+    case '0': runProg_0(); break;
+    case '1': runProg_1(); break;
+    case '2': runProg_2(); break;
+    case '3': runProg_3(); break;
+    case '4': runProg_4(); break;
+    case '5': runProg_5(); break;
     default: break;
   }
 }
 
-void runTest_0(){
+void runProg_0(){
   testCounter++; 
   if(testCounter > 9) {testCounter = 0;}
   for(int i=0; i<4; i++){
@@ -238,7 +250,7 @@ void runTest_0(){
   }
 }
 
-void runTest_1(){
+void runProg_1(){
   byte nibbleBit = 3;
   nibbleCounter++;
   for(int i=0; i<4; i++){
@@ -247,19 +259,40 @@ void runTest_1(){
   }
 }
 
-void runTest_2(){
+void runProg_2(){
   displayBatteryLevel();
 }
 
-void runTest_3(){
+void runProg_3(){
   for(int i=0; i<4; i++){
     numToDisplay[i] = NUM[i]; 
   }
 }
 
-void runTest_4(){
-  Serial.println("in test 4");
-  readRTCregisters();
-  Serial.println("----------");
+void runProg_4(){
+  DateTime now = rtc.now();
+  encodeTime(now.hour(),now.minute());
+}
+
+void runProg_5(){
+  encodeTime(hours,mins);
+}
+
+void incrementTime(){
+  
+  switch(timeToSet){
+    case 0:
+      hours++;
+      if(hours > 23) {hours = 0;}
+      break;
+    case 1:
+      mins++;
+      if(mins > 59) {mins = 0;}
+      break;
+
+    default:
+      break;
+    
+  }
 }
 
