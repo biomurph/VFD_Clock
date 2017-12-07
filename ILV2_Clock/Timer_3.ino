@@ -13,6 +13,13 @@
     1:256            312 kHz      5 Hz      T3_PRESCALE_1_256
 */
 
+void fireUpTimer3(int Hz){
+  start_timer_3(Hz);// set desired Hz
+  setIntVector(_TIMER_3_VECTOR, MUX_TIMER);// point to ISR
+  setIntPriority(_TIMER_3_VECTOR, 4, 0);// set priority
+  clearIntFlag(_TIMER_3_IRQ);// Clear hardware flag
+  setIntEnable(_TIMER_3_IRQ);// Enable 
+}
 
 /********************************
    Timer and interrupt setup function

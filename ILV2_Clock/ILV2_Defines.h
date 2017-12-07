@@ -23,7 +23,7 @@
 #define SW_1 13
 #define SW_2 17 // also BOOT_EN
 #define BAT_SENS 1  // also GPIO 7
-#define INT_SQW 8
+#define RTC_INT 8
 #define DIN 18
 #define CLK 0   // data shifted from DIN on rising edge
 #define LOAD 1  // Passes data to outputs on rising edge, Latch on falling edge
