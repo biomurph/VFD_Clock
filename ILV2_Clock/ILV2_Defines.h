@@ -74,7 +74,7 @@
 
 
 /***************************************************************
-    TIMER 3 INTERRUPT CONTROL  
+    TIMER 3 INTERRUPT CONTROL
  ***************************************************************/
 #define T3CON_ENABLE_BIT 0x8000
 #define T3CON_PRESCALER_BITS 0x0070
@@ -106,8 +106,11 @@
 //#define INT_FREQUENCY 400     // SET THIS IN THE SETUP
 
 /***************************************************************
-DS3231 Defines
+Misc Defines
  ***************************************************************/
 #define RTC_ADD 0x68
+#define BLINK_TIMER 300 // LED blink rate
+#define TEST_TIMER  200  // test timing
+#define BLANK_TIMER 200
 
 #endif

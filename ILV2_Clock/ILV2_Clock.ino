@@ -5,10 +5,10 @@
   Uses the MAX6920 VFD SIPO driver
   Uses DS3231 RTC
   Has V-Divider on Battery for Battery level sensing
-  
-  
+
+
   Made by Joel Murphy
-  Designed to target https://github.com/biomurph/ILV2-7-5_VFD_Display 
+  Designed to target https://github.com/biomurph/ILV2-7-5_VFD_Display
 
   Based In Part On:
   Work with ILV2-5/7 tubes by Callum Nunez-Vaz https://callumnunesvaz.wordpress.com/portfolio/dogbonevfd/
@@ -27,14 +27,13 @@ RTC_DS3231 rtc;
 byte NUM[10] = {ZERO,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE};
 byte GRID[4] = {GRID_1,GRID_2,GRID_4,GRID_5};
 short numToDisplay[4];
-byte digit = EIGHT;
+
 int SWITCH[2] = {SW_1,SW_2};
 boolean lastSwitchState[2] = {false,false};
 boolean debounce[2] = {false,false};
 unsigned int debounceTime;
-unsigned long lastBlink;  
-int blinkTimer = 300; // LED blink rate
-int testTimer = 200;  // test timing
+
+unsigned long lastBlink;
 unsigned int lastTime = 0; // test timing
 int testCounter = 0;
 byte nibbleCounter = 0;
@@ -46,17 +45,15 @@ int displayMode = 24;
 boolean blankDot = false;
 boolean blankState = false;
 unsigned int lastBlankTime = 0;
-int blankTime = 200;
+int digit = 0;
+int testGrid = 0;
 
 boolean VFD_ON = false;
-int testGrid = 0;
+// int testGrid = 0;
 
 boolean LEDstate = false;
 
 float battVolts = 0.0;
-
-//boolean fade = false;
-//boolean goingUp = true;
 
 // Timer 3 Variables
 volatile uint32_t grid = 0;
@@ -74,8 +71,7 @@ void __attribute__((interrupt)) MUX_TIMER()
 void setup(){
   Serial.begin(115200);
   Wire.begin();
-  setUpStuph(); // pin directions an variables
-//  FIRE UP TIMER 3
+  setUpStuph();             // pin directions an variables
   fireUpTimer3(400);        // set up the timer to multiplex the GRIDS at (Hz)
   enableVFD();              // turn on the high voltage and the low voltage LDOs
   progToRun = '4';          // prints the time to VFD
@@ -90,23 +86,23 @@ void loop(){
 //  blink_LED();  // used for testing
   feelSwitches();       // switches to set time or view battery level
   checkRTCinterrupt();  // check if we're at the top of the minute
-  if(muxTime) {mux();}  // multiplex to the VFD 
-  
-  if((millis() - lastTime > testTimer) && (progToRun != '4')){  // '4' = 'be a clock'
-    lastTime = millis();  
+  if(muxTime) {mux();}  // multiplex to the VFD
+
+  if((millis() - lastTime > TEST_TIMER) && (progToRun != '4')){  // '4' = 'be a clock'
+    lastTime = millis();
     runProg(progToRun);   // keeping legacy tests for fun
   }
-  
+
 }
 
 
 
 void serialEvent(){
-  
+
   while(Serial.available()){
     char inChar = Serial.read();
 //    Serial.print("in serialEvent "); Serial.println(inChar);
-    
+
     switch (inChar){
       case 'e': enableVFD(); break;
       case 'd': disableVFD(); break;
@@ -127,7 +123,7 @@ void serialEvent(){
 }
 
 void mux(){
-  shiftOUT(numToDisplay[grid]); 
+  shiftOUT(numToDisplay[grid]);
   muxTime = false;
 }
 
@@ -149,16 +145,13 @@ void setUpStuph(){
   lastTime = millis();
   digit = 0;
   digitalWrite(LED,HIGH); // to show power on
-  
+
 }
 
 void getBatteryLevel(){
   int counts = analogRead(A1);
   float volts = float(counts)*(3.0/1023.0);
   battVolts = volts*2.0;
-//  Serial.print(counts);Serial.print(", ");
-//  Serial.print(volts); Serial.print(", ");
-//  Serial.println(battVolts); 
 }
 
 void printBatteryLevel(){
@@ -178,7 +171,7 @@ void displayBatteryLevel(){
 }
 
 void blink_LED(){   // used for testing only. blinking is stressful.
-  if(millis() - lastBlink > blinkTimer) {
+  if(millis() - lastBlink > BLINK_TIMER) {
     lastBlink = millis();
     LEDstate = !LEDstate;
     digitalWrite(LED,LEDstate);
@@ -197,7 +190,7 @@ void printVersion(){  // show what this code does!
   Serial.println("Press '3' to run test 3");
   Serial.println("Press '4' to display RTC time");
   Serial.println("Press '5' to set time");
-  Serial.println("Press '6' to scroll pwm fade");
+  Serial.println("Press '6' to blink display with blanking");
   Serial.println("\nPress SW1 to set hours");
   Serial.println("\tUse SW2 to increment hours");
   Serial.println("Press SW1 to set minutes");
@@ -206,7 +199,7 @@ void printVersion(){  // show what this code does!
   Serial.println("\tUse SW2 to toggle 12hr/24hr mode");
   Serial.println("Press SW1 to run clock at set time in set mode");
   Serial.println("\nPress SW2 to toggle between time and battery level");
-  
+
 }
 
 
@@ -224,15 +217,15 @@ void runProg(char test){
   }
 }
 
-void runProg_0(){ // counts up all segments from 0-9. Hz at testTimer millis match
-  testCounter++; 
+void runProg_0(){ // counts up all segments from 0-9. Hz at TEST_TIMER millis match
+  testCounter++;
   if(testCounter > 9) {testCounter = 0;}
   for(int i=0; i<4; i++){
     numToDisplay[i] = NUM[testCounter];
   }
 }
 
-void runProg_1(){ // counts binary 0-F. Hz at testTimer millis match
+void runProg_1(){ // counts binary 0-F. Hz at TEST_TIMER millis match
   byte nibbleBit = 3;
   nibbleCounter++;
   for(int i=0; i<4; i++){
@@ -241,13 +234,13 @@ void runProg_1(){ // counts binary 0-F. Hz at testTimer millis match
   }
 }
 
-void runProg_2(){ // prints battery level. refresh on testTimer millis match
+void runProg_2(){ // prints battery level. refresh on TEST_TIMER millis match
   displayBatteryLevel();
 }
 
 void runProg_3(){ // prints each segment position in GRID array
   for(int i=0; i<4; i++){
-    numToDisplay[i] = NUM[i]; 
+    numToDisplay[i] = NUM[i];
   }
 }
 
@@ -262,7 +255,7 @@ void runProg_5(){  // updates the display while setting time
   }
 }
 
-void runProg_6(){
+void runProg_6(){ //
   if(blankState){
     digitalWrite(BLANK,HIGH);
   }else{
@@ -282,6 +275,3 @@ void checkRTCinterrupt(){
     }
   }
 }
-
-
-
