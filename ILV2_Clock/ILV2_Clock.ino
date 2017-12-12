@@ -34,7 +34,7 @@ boolean debounce[2] = {false,false};
 unsigned int debounceTime;
 unsigned long lastBlink;  
 int blinkTimer = 300; // LED blink rate
-int testTimer = 300;  // test timing
+int testTimer = 200;  // test timing
 unsigned int lastTime = 0; // test timing
 int testCounter = 0;
 byte nibbleCounter = 0;
@@ -42,6 +42,8 @@ int progToRun = 0;
 int timeToSet = 0;
 int hours;
 int mins;
+int displayMode = 24;
+boolean blankDot = false;
 boolean blankState = false;
 unsigned int lastBlankTime = 0;
 int blankTime = 200;
@@ -53,8 +55,8 @@ boolean LEDstate = false;
 
 float battVolts = 0.0;
 
-boolean fade = false;
-boolean goingUp = true;
+//boolean fade = false;
+//boolean goingUp = true;
 
 // Timer 3 Variables
 volatile uint32_t grid = 0;
@@ -74,25 +76,25 @@ void setup(){
   Wire.begin();
   setUpStuph(); // pin directions an variables
 //  FIRE UP TIMER 3
-  fireUpTimer3(400);  // send the setup with Hz for Timer 3
-  enableVFD();
-  progToRun = '4';  // prints the time to VFD
+  fireUpTimer3(400);        // set up the timer to multiplex the GRIDS at (Hz)
+  enableVFD();              // turn on the high voltage and the low voltage LDOs
+  progToRun = '4';          // prints the time to VFD
   DateTime now = rtc.now(); // get the RTC time
-  encodeTime(now.hour(),now.minute());  // display the RTC time
-  rtc.writeAlarm2_minute(); // sets up Alarm2 to trigger INT_SQW pin on the minute
+  encodeTime(now.hour(),now.minute());  // prepare to display the RTC time
+  rtc.writeAlarm2_minute(); // set up Alarm2 to trigger INT_SQW pin every minute (00 seconds)
 }
 
 
 
 void loop(){
 //  blink_LED();  // used for testing
-  feelSwitches();
-  checkRTCinterrupt();
-  if(muxTime) {mux();}  // print to the VFD
+  feelSwitches();       // switches to set time or view battery level
+  checkRTCinterrupt();  // check if we're at the top of the minute
+  if(muxTime) {mux();}  // multiplex to the VFD 
   
-  if((millis() - lastTime > testTimer) && (progToRun != '4')){
-    lastTime = millis();
-    runProg(progToRun);
+  if((millis() - lastTime > testTimer) && (progToRun != '4')){  // '4' = 'be a clock'
+    lastTime = millis();  
+    runProg(progToRun);   // keeping legacy tests for fun
   }
   
 }
@@ -115,8 +117,8 @@ void serialEvent(){
       case '2': progToRun = inChar; break;  // display battery level
       case '3': progToRun = inChar; break;  // run test 3
       case '4': progToRun = inChar; break;  // display RTC time
-      case '5': progToRun = inChar; break;  // ?
-      case '6': progToRun = inChar; break;  // pwm test
+      case '5': progToRun = inChar; break;  // set time
+      case '6': progToRun = inChar; break;  // blanking blink test
       default:
         Serial.print("i got "); Serial.println(inChar);
         break;
@@ -167,15 +169,15 @@ void printBatteryLevel(){
 void displayBatteryLevel(){
   int num;
   getBatteryLevel();
-  numToDisplay[0] = BATTERY; 
-  num = int(battVolts*100.0);
+  numToDisplay[0] = BATTERY;          // print 'b' to VFD
+  num = int(battVolts*100.0);         // scaling
   for(int i=3; i>0; i--){
-      numToDisplay[i] = NUM[num%10];
+      numToDisplay[i] = NUM[num%10];  // print ones, tens, hundos
       num /= 10;
   }
 }
 
-void blink_LED(){
+void blink_LED(){   // used for testing only. blinking is stressful.
   if(millis() - lastBlink > blinkTimer) {
     lastBlink = millis();
     LEDstate = !LEDstate;
@@ -183,25 +185,27 @@ void blink_LED(){
   }
 }
 
-void printVersion(){
+void printVersion(){  // show what this code does!
   Serial.println("ILV2-7/5 Clock Test Code");
+  Serial.println("Press '?' to print this list!");
   Serial.println("Press 'e' to enable VFD");
   Serial.println("Press 'd' to disable VFD");
   Serial.println("Press 'b' to print battery level");
-  Serial.println("Press '0' to count up all segments");
-  Serial.println("Press '1' to count binary nibble");
+  Serial.println("Press '0' to count up all segments 0-9");
+  Serial.println("Press '1' to count binary nibble 0-F");
   Serial.println("Press '2' to display battery level");
   Serial.println("Press '3' to run test 3");
   Serial.println("Press '4' to display RTC time");
   Serial.println("Press '5' to set time");
   Serial.println("Press '6' to scroll pwm fade");
-  Serial.println("Press SW1 to set hours");
+  Serial.println("\nPress SW1 to set hours");
   Serial.println("\tUse SW2 to increment hours");
-  Serial.println("\tPress SW1 to set minutes");
+  Serial.println("Press SW1 to set minutes");
   Serial.println("\tUse SW2 to increment minutes");
-  Serial.println("\tPress SW1 to run clock");
-  Serial.println("Press SW2 to toggle between time and battery level");
-  Serial.println("Press '?' to print this list!");
+  Serial.println("Press SW1 to set 12hr/24hr display mode");
+  Serial.println("\tUse SW2 to toggle 12hr/24hr mode");
+  Serial.println("Press SW1 to run clock at set time in set mode");
+  Serial.println("\nPress SW2 to toggle between time and battery level");
   
 }
 
@@ -220,7 +224,7 @@ void runProg(char test){
   }
 }
 
-void runProg_0(){
+void runProg_0(){ // counts up all segments from 0-9. Hz at testTimer millis match
   testCounter++; 
   if(testCounter > 9) {testCounter = 0;}
   for(int i=0; i<4; i++){
@@ -228,7 +232,7 @@ void runProg_0(){
   }
 }
 
-void runProg_1(){
+void runProg_1(){ // counts binary 0-F. Hz at testTimer millis match
   byte nibbleBit = 3;
   nibbleCounter++;
   for(int i=0; i<4; i++){
@@ -237,23 +241,25 @@ void runProg_1(){
   }
 }
 
-void runProg_2(){
+void runProg_2(){ // prints battery level. refresh on testTimer millis match
   displayBatteryLevel();
 }
 
-void runProg_3(){
+void runProg_3(){ // prints each segment position in GRID array
   for(int i=0; i<4; i++){
     numToDisplay[i] = NUM[i]; 
   }
 }
 
-void runProg_4(){
+void runProg_4(){ // displays current set time. updates on the minute
   DateTime now = rtc.now();
   encodeTime(now.hour(),now.minute());
 }
 
-void runProg_5(){
-//  encodeTime(hours,mins);
+void runProg_5(){  // updates the display while setting time
+  if(timeToSet < 3){
+    encodeTime(hours,mins);
+  }
 }
 
 void runProg_6(){
@@ -264,27 +270,6 @@ void runProg_6(){
   }
   blankState = !blankState;
 }
-
-void incrementTime(){
-  
-  switch(timeToSet){
-    case 1:
-      hours++;
-      if(hours > 23) {hours = 0;}
-      encodeTime(hours,mins);
-      break;
-    case 2:
-      mins++;
-      if(mins > 59) {mins = 0;}
-      encodeTime(hours,mins);
-      break;
-
-    default:
-      break;
-    
-  }
-}
-
 
 void checkRTCinterrupt(){
   int I = digitalRead(RTC_INT);

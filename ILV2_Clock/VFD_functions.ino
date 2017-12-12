@@ -8,12 +8,15 @@
 
 void shiftOUT(byte d)
 {
-  int output = 0;
-  boolean bitVal;
-  output = d | (GRID[grid] << 8); // grid is incremented in ISR
-  if(grid%2 == 0) output |= DOT; // test this for brightness
+    int output = 0;
+    boolean bitVal;
+    output = d | (GRID[grid] << 8); // grid is incremented in ISR
   
-  checkForBlanking(d);
+    checkForBlanking(d);
+  
+    if((grid%2 == 0)&&(!blankDot)){
+      output |= DOT; // illuminate the dots
+    }
   
   for(int i=11; i>=0; i--){
     digitalWrite(CLK,LOW);  // prime the pump
@@ -48,6 +51,12 @@ void checkForBlanking(byte d){
       }
       digitalWrite(BLANK,blankState);
     }
+  }
+  if(timeToSet == 3){
+    if(thisTime-lastBlankTime > blankTime){
+        lastBlankTime = thisTime;
+        blankDot = !blankDot;
+      }
   }
   
   if(grid == 0 && d == ZERO){

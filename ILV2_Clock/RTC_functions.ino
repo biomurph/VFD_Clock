@@ -8,7 +8,10 @@ void readRTCnow(){
 }
 
 void encodeTime(int h, int m){
-  
+  if(displayMode == 12){
+    if(h > 12){ h -= 12; }  // set hours to 12 mode
+    if(h == 0){ h == 12; }  // make sure midnight isn't 0:00
+  }
   Serial.print(h, DEC);
   Serial.print(':');
   Serial.println(m, DEC);
