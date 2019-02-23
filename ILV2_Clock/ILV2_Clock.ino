@@ -7,14 +7,15 @@
   Has V-Divider on Battery for Battery level sensing
   
   
-  Made by Joel Murphy
-  Designed to target https://github.com/biomurph/ILV2-7-5_VFD_Display 
+  Made by Joel Murphy, Winter 2017
+  Designed to target https://github.com/biomurph/ILV2-7-5_VFD_Display hardware
 
   Based In Part On:
   Work with ILV2-5/7 tubes by Callum Nunez-Vaz https://callumnunesvaz.wordpress.com/portfolio/dogbonevfd/
                                                http://www.johngineer.com/blog/?p=1595
   Work with Timer 3 control by Jay Weeks https://www.instructables.com/id/Timer-Interrupts-on-the-DP32/
 
+  Adafruit's RTClib with modifications to access Alarm2 for interrupts on the minute (seconds = 00)
 */
 
 
