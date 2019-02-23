@@ -5,8 +5,8 @@
   Uses the MAX6920 VFD SIPO driver
   Uses DS3231 RTC
   Has V-Divider on Battery for Battery level sensing
-  
-  
+
+
   Made by Joel Murphy, Winter 2017
   Designed to target https://github.com/biomurph/ILV2-7-5_VFD_Display hardware
 
@@ -28,12 +28,13 @@ RTC_DS3231 rtc;
 byte NUM[10] = {ZERO,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE};
 byte GRID[4] = {GRID_1,GRID_2,GRID_4,GRID_5};
 short numToDisplay[4];
-byte digit = EIGHT;
+
 int SWITCH[2] = {SW_1,SW_2};
 boolean lastSwitchState[2] = {false,false};
-unsigned long lastBlink;  
-int blinkTimer = 300; // LED blink rate
-int testTimer = 1000;  // test timing
+boolean debounce[2] = {false,false};
+unsigned int debounceTime;
+
+unsigned long lastBlink;
 unsigned int lastTime = 0; // test timing
 int testCounter = 0;
 byte nibbleCounter = 0;
@@ -41,9 +42,15 @@ int progToRun = 0;
 int timeToSet = 0;
 int hours;
 int mins;
+int displayMode = 24;
+boolean blankDot = false;
+boolean blankState = false;
+unsigned int lastBlankTime = 0;
+int digit = 0;
+int testGrid = 0;
 
 boolean VFD_ON = false;
-int testGrid = 0;
+// int testGrid = 0;
 
 boolean LEDstate = false;
 
@@ -65,53 +72,50 @@ void __attribute__((interrupt)) MUX_TIMER()
 void setup(){
   Serial.begin(115200);
   Wire.begin();
-  setUpPins(); 
-//  FIRE UP TIMER 3
-  start_timer_3(400);// set desired Hz
-  setIntVector(_TIMER_3_VECTOR, MUX_TIMER);// point to ISR
-  setIntPriority(_TIMER_3_VECTOR, 4, 0);// set priority
-  clearIntFlag(_TIMER_3_IRQ);// Clear hardware flag
-  setIntEnable(_TIMER_3_IRQ);// Enable 
-
-  lastBlink = millis();
-  lastTime = millis();
-  digit = 0;
-  digitalWrite(LED,HIGH); // to show power on
-  progToRun = '4';  // prints the time to VFD
+  setUpStuph();             // pin directions an variables
+  fireUpTimer3(400);        // set up the timer to multiplex the GRIDS at (Hz)
+  enableVFD();              // turn on the high voltage and the low voltage LDOs
+  progToRun = '4';          // prints the time to VFD
+  DateTime now = rtc.now(); // get the RTC time
+  encodeTime(now.hour(),now.minute());  // prepare to display the RTC time
+  rtc.writeAlarm2_minute(); // set up Alarm2 to trigger INT_SQW pin every minute (00 seconds)
 }
 
 
 
 void loop(){
-//  blink_LED();
-  feelSwitches();
-  if(muxTime) {mux();}
+//  blink_LED();  // used for testing
+  feelSwitches();       // switches to set time or view battery level
+  checkRTCinterrupt();  // check if we're at the top of the minute
+  if(muxTime) {mux();}  // multiplex to the VFD
 
-  if(millis() - lastTime > testTimer){
+  if((millis() - lastTime > TEST_TIMER) && (progToRun != '4')){  // '4' = 'be a clock'
     lastTime = millis();
-    runProg(progToRun);
+    runProg(progToRun);   // keeping legacy tests for fun
   }
+
 }
 
 
 
 void serialEvent(){
-  
+
   while(Serial.available()){
     char inChar = Serial.read();
 //    Serial.print("in serialEvent "); Serial.println(inChar);
-    
+
     switch (inChar){
       case 'e': enableVFD(); break;
       case 'd': disableVFD(); break;
       case '?': printVersion(); break;
       case 'b': printBatteryLevel(); break;
-      case '0': progToRun = inChar; break;
-      case '1': progToRun = inChar; break;
-      case '2': progToRun = inChar; break;
-      case '3': progToRun = inChar; break;
-      case '4': progToRun = inChar; break;
-//      case '5': progToRun = inChar; break;
+      case '0': progToRun = inChar; break;  // count up all digits 0-9
+      case '1': progToRun = inChar; break;  // count binary nibble
+      case '2': progToRun = inChar; break;  // display battery level
+      case '3': progToRun = inChar; break;  // run test 3
+      case '4': progToRun = inChar; break;  // display RTC time
+      case '5': progToRun = inChar; break;  // set time
+      case '6': progToRun = inChar; break;  // blanking blink test
       default:
         Serial.print("i got "); Serial.println(inChar);
         break;
@@ -124,7 +128,8 @@ void mux(){
   muxTime = false;
 }
 
-void setUpPins(){
+void setUpStuph(){
+//  Pin Directions
   pinMode(LED,OUTPUT); digitalWrite(LED,LOW);
   pinMode(VFD_EN,OUTPUT); digitalWrite(VFD_EN,LOW);
   pinMode(DIN,OUTPUT); digitalWrite(DIN,LOW);
@@ -134,99 +139,68 @@ void setUpPins(){
   pinMode(SW_1,INPUT);
   pinMode(SW_2,INPUT);
   pinMode(BAT_SENS,INPUT);
-  pinMode(INT_SQW,INPUT);
-  
-}
+  pinMode(RTC_INT,INPUT);
 
-void feelSwitches(){
-  boolean switchState;
-  for(int i=0; i<2; i++){
-    switchState = digitalRead(SWITCH[i]);
-    if(switchState != lastSwitchState[i]){
-      lastSwitchState[i] = switchState;
-      Serial.print("Switch ");Serial.print(i+1);Serial.print(" = "); Serial.println(switchState);
-      if(i == 0 && switchState == 1){
-        if(progToRun == '5'){
-          incrementTime();  // increment the time setting
-        } else if(progToRun == '4'){
-          progToRun = '2';  // set to show battery level
-        } else if(progToRun == '2'){
-          progToRun = '4';  // set to tell time
-        }
-      }
-      if(i == 1 && switchState == 1){
-        if(progToRun == '4'){
-          progToRun = '5';  // set time
-          hours = now.hour();
-          mins = now.minute();
-          timeToSet = 0;  // prep to set hours
-          return;
-        } else {
-          timeToSet++;
-          if(timeToSet == 2){
-            updateRTC(hours,mins);
-            progToRun = '4';  // done setting time!
-          }
-        }
-        
-      }
-    }
-  }
-}
+//  Some Useful Variables
+  lastBlink = millis();
+  lastTime = millis();
+  digit = 0;
+  digitalWrite(LED,HIGH); // to show power on
 
+}
 
 void getBatteryLevel(){
   int counts = analogRead(A1);
-  float volts = float(counts)*(3.3/1023.0);
+  float volts = float(counts)*(3.0/1023.0);
   battVolts = volts*2.0;
-  Serial.print(counts);Serial.print(", ");
-  Serial.print(volts); Serial.print(", ");
-  Serial.println(battVolts); 
 }
 
 void printBatteryLevel(){
   getBatteryLevel();
-  Serial.println(battVolts);
+  Serial.print(battVolts); Serial.println("V");
 }
 
 void displayBatteryLevel(){
   int num;
   getBatteryLevel();
-  numToDisplay[0] = BATTERY; 
-  num = int(battVolts*100.0);
+  numToDisplay[0] = BATTERY;          // print 'b' to VFD
+  num = int(battVolts*100.0);         // scaling
   for(int i=3; i>0; i--){
-      numToDisplay[i] = NUM[num%10];
+      numToDisplay[i] = NUM[num%10];  // print ones, tens, hundos
       num /= 10;
   }
 }
 
-void blink_LED(){
-  if(millis() - lastBlink > blinkTimer) {
+void blink_LED(){   // used for testing only. blinking is stressful.
+  if(millis() - lastBlink > BLINK_TIMER) {
     lastBlink = millis();
     LEDstate = !LEDstate;
     digitalWrite(LED,LEDstate);
   }
 }
 
-void printVersion(){
+void printVersion(){  // show what this code does!
   Serial.println("ILV2-7/5 Clock Test Code");
+  Serial.println("Press '?' to print this list!");
   Serial.println("Press 'e' to enable VFD");
   Serial.println("Press 'd' to disable VFD");
   Serial.println("Press 'b' to print battery level");
-  Serial.println("Press '?' to print this list");
-  Serial.println("Press '0' to count up all segments");
-  Serial.println("Press '1' to count binary nibble");
+  Serial.println("Press '0' to count up all segments 0-9");
+  Serial.println("Press '1' to count binary nibble 0-F");
   Serial.println("Press '2' to display battery level");
   Serial.println("Press '3' to run test 3");
   Serial.println("Press '4' to display RTC time");
   Serial.println("Press '5' to set time");
-  Serial.println("Press SW1 to set hours");
+  Serial.println("Press '6' to blink display with blanking");
+  Serial.println("\nPress SW1 to set hours");
   Serial.println("\tUse SW2 to increment hours");
-  Serial.println("\tPress SW1 to set minutes");
+  Serial.println("Press SW1 to set minutes");
   Serial.println("\tUse SW2 to increment minutes");
-  Serial.println("\tPress SW1 to run clock");
-  Serial.println("Press SW2 to toggle between time and battery level");
-  
+  Serial.println("Press SW1 to set 12hr/24hr display mode");
+  Serial.println("\tUse SW2 to toggle 12hr/24hr mode");
+  Serial.println("Press SW1 to run clock at set time in set mode");
+  Serial.println("\nPress SW2 to toggle between time and battery level");
+
 }
 
 
@@ -239,19 +213,20 @@ void runProg(char test){
     case '3': runProg_3(); break;
     case '4': runProg_4(); break;
     case '5': runProg_5(); break;
+    case '6': runProg_6(); break;
     default: break;
   }
 }
 
-void runProg_0(){
-  testCounter++; 
+void runProg_0(){ // counts up all segments from 0-9. Hz at TEST_TIMER millis match
+  testCounter++;
   if(testCounter > 9) {testCounter = 0;}
   for(int i=0; i<4; i++){
     numToDisplay[i] = NUM[testCounter];
   }
 }
 
-void runProg_1(){
+void runProg_1(){ // counts binary 0-F. Hz at TEST_TIMER millis match
   byte nibbleBit = 3;
   nibbleCounter++;
   for(int i=0; i<4; i++){
@@ -260,40 +235,44 @@ void runProg_1(){
   }
 }
 
-void runProg_2(){
+void runProg_2(){ // prints battery level. refresh on TEST_TIMER millis match
   displayBatteryLevel();
 }
 
-void runProg_3(){
+void runProg_3(){ // prints each segment position in GRID array
   for(int i=0; i<4; i++){
-    numToDisplay[i] = NUM[i]; 
+    numToDisplay[i] = NUM[i];
   }
 }
 
-void runProg_4(){
+void runProg_4(){ // displays current set time. updates on the minute
   DateTime now = rtc.now();
   encodeTime(now.hour(),now.minute());
 }
 
-void runProg_5(){
-  encodeTime(hours,mins);
-}
-
-void incrementTime(){
-  
-  switch(timeToSet){
-    case 0:
-      hours++;
-      if(hours > 23) {hours = 0;}
-      break;
-    case 1:
-      mins++;
-      if(mins > 59) {mins = 0;}
-      break;
-
-    default:
-      break;
-    
+void runProg_5(){  // updates the display while setting time
+  if(timeToSet < 3){
+    encodeTime(hours,mins);
   }
 }
 
+void runProg_6(){ //
+  if(blankState){
+    digitalWrite(BLANK,HIGH);
+  }else{
+    digitalWrite(BLANK,LOW);
+  }
+  blankState = !blankState;
+}
+
+void checkRTCinterrupt(){
+  int I = digitalRead(RTC_INT);
+  if(I == 0){
+    rtc.callBackToAlarm2(); // reset the flag in the rtc
+    Serial.println("interrupt!");
+    DateTime now = rtc.now();
+    if(progToRun == '4'){
+      encodeTime(now.hour(),now.minute());
+    }
+  }
+}

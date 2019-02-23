@@ -23,7 +23,7 @@
 #define SW_1 13
 #define SW_2 17 // also BOOT_EN
 #define BAT_SENS 1  // also GPIO 7
-#define INT_SQW 8
+#define RTC_INT 8
 #define DIN 18
 #define CLK 0   // data shifted from DIN on rising edge
 #define LOAD 1  // Passes data to outputs on rising edge, Latch on falling edge
@@ -69,10 +69,12 @@
 #define GRID_5  0x08
 
 #define BATTERY 0x7C
+#define H 0x74
+#define R 0x50
 
 
 /***************************************************************
-    TIMER 3 INTERRUPT CONTROL  
+    TIMER 3 INTERRUPT CONTROL
  ***************************************************************/
 #define T3CON_ENABLE_BIT 0x8000
 #define T3CON_PRESCALER_BITS 0x0070
@@ -104,8 +106,11 @@
 //#define INT_FREQUENCY 400     // SET THIS IN THE SETUP
 
 /***************************************************************
-DS3231 Defines
+Misc Defines
  ***************************************************************/
 #define RTC_ADD 0x68
+#define BLINK_TIMER 300 // LED blink rate
+#define TEST_TIMER  200  // test timing
+#define BLANK_TIMER 200
 
 #endif
