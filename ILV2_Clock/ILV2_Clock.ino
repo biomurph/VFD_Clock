@@ -4,7 +4,7 @@
   Targets a PIC32MX250F128B with ChipKIT DP32 bootloader
   Uses the MAX6920 VFD SIPO driver
   Uses DS3231 RTC
-  Has V-Divider on Battery for Battery level sensing
+  Powered by a 24V 2.5mm AC Adapter. North of 500mA should work
 
 
   Made by Joel Murphy, Winter 2017
@@ -15,7 +15,11 @@
                                                http://www.johngineer.com/blog/?p=1595
   Work with Timer 3 control by Jay Weeks https://www.instructables.com/id/Timer-Interrupts-on-the-DP32/
 
-  Adafruit's RTClib with modifications to access Alarm2 for interrupts on the minute (seconds = 00)
+  Adafruit's RTClib with modifications to access Alarm2 for interrupts
+  USE BIOMURPH's fork of Adafruit's RTClib https://github.com/biomurph/RTClib
+
+  Updated by Joel Murphy, Spring 2019 to target new hardware version
+  
 */
 
 
@@ -84,15 +88,15 @@ void setup(){
 
 
 void loop(){
-//  blink_LED();  // used for testing
+  blink_LED();  // used for testing
   feelSwitches();       // switches to set time or view battery level
-  checkRTCinterrupt();  // check if we're at the top of the minute
-  if(muxTime) {mux();}  // multiplex to the VFD
+//  checkRTCinterrupt();  // check if we're at the top of the minute
+//  if(muxTime) {mux();}  // multiplex to the VFD
 
-  if((millis() - lastTime > TEST_TIMER) && (progToRun != '4')){  // '4' = 'be a clock'
-    lastTime = millis();
-    runProg(progToRun);   // keeping legacy tests for fun
-  }
+//  if((millis() - lastTime > TEST_TIMER) && (progToRun != '4')){  // '4' = 'be a clock'
+//    lastTime = millis();
+//    runProg(progToRun);   // keeping legacy tests for fun
+//  }
 
 }
 
@@ -108,10 +112,10 @@ void serialEvent(){
       case 'e': enableVFD(); break;
       case 'd': disableVFD(); break;
       case '?': printVersion(); break;
-      case 'b': printBatteryLevel(); break;
+//      case 'b': printBatteryLevel(); break;
       case '0': progToRun = inChar; break;  // count up all digits 0-9
       case '1': progToRun = inChar; break;  // count binary nibble
-      case '2': progToRun = inChar; break;  // display battery level
+//      case '2': progToRun = inChar; break;  // display battery level
       case '3': progToRun = inChar; break;  // run test 3
       case '4': progToRun = inChar; break;  // display RTC time
       case '5': progToRun = inChar; break;  // set time
@@ -138,7 +142,7 @@ void setUpStuph(){
   pinMode(BLANK,OUTPUT); digitalWrite(BLANK,LOW);
   pinMode(SW_1,INPUT);
   pinMode(SW_2,INPUT);
-  pinMode(BAT_SENS,INPUT);
+//  pinMode(BAT_SENS,INPUT);
   pinMode(RTC_INT,INPUT);
 
 //  Some Useful Variables
@@ -149,27 +153,27 @@ void setUpStuph(){
 
 }
 
-void getBatteryLevel(){
-  int counts = analogRead(A1);
-  float volts = float(counts)*(3.0/1023.0);
-  battVolts = volts*2.0;
-}
+//void getBatteryLevel(){
+//  int counts = analogRead(A1);
+//  float volts = float(counts)*(3.0/1023.0);
+//  battVolts = volts*2.0;
+//}
 
-void printBatteryLevel(){
-  getBatteryLevel();
-  Serial.print(battVolts); Serial.println("V");
-}
+//void printBatteryLevel(){
+//  getBatteryLevel();
+//  Serial.print(battVolts); Serial.println("V");
+//}
 
-void displayBatteryLevel(){
-  int num;
-  getBatteryLevel();
-  numToDisplay[0] = BATTERY;          // print 'b' to VFD
-  num = int(battVolts*100.0);         // scaling
-  for(int i=3; i>0; i--){
-      numToDisplay[i] = NUM[num%10];  // print ones, tens, hundos
-      num /= 10;
-  }
-}
+//void displayBatteryLevel(){
+//  int num;
+//  getBatteryLevel();
+//  numToDisplay[0] = BATTERY;          // print 'b' to VFD
+//  num = int(battVolts*100.0);         // scaling
+//  for(int i=3; i>0; i--){
+//      numToDisplay[i] = NUM[num%10];  // print ones, tens, hundos
+//      num /= 10;
+//  }
+//}
 
 void blink_LED(){   // used for testing only. blinking is stressful.
   if(millis() - lastBlink > BLINK_TIMER) {
@@ -184,10 +188,10 @@ void printVersion(){  // show what this code does!
   Serial.println("Press '?' to print this list!");
   Serial.println("Press 'e' to enable VFD");
   Serial.println("Press 'd' to disable VFD");
-  Serial.println("Press 'b' to print battery level");
+//  Serial.println("Press 'b' to print battery level");
   Serial.println("Press '0' to count up all segments 0-9");
   Serial.println("Press '1' to count binary nibble 0-F");
-  Serial.println("Press '2' to display battery level");
+//  Serial.println("Press '2' to display battery level");
   Serial.println("Press '3' to run test 3");
   Serial.println("Press '4' to display RTC time");
   Serial.println("Press '5' to set time");
@@ -209,12 +213,14 @@ void runProg(char test){
   switch (test){
     case '0': runProg_0(); break;
     case '1': runProg_1(); break;
-    case '2': runProg_2(); break;
+//    case '2': runProg_2(); break;
     case '3': runProg_3(); break;
     case '4': runProg_4(); break;
     case '5': runProg_5(); break;
     case '6': runProg_6(); break;
-    default: break;
+    default: 
+      Serial.print("I got "); Serial.println(test);
+      break;
   }
 }
 
@@ -235,9 +241,9 @@ void runProg_1(){ // counts binary 0-F. Hz at TEST_TIMER millis match
   }
 }
 
-void runProg_2(){ // prints battery level. refresh on TEST_TIMER millis match
-  displayBatteryLevel();
-}
+//void runProg_2(){ // prints battery level. refresh on TEST_TIMER millis match
+//  displayBatteryLevel();
+//}
 
 void runProg_3(){ // prints each segment position in GRID array
   for(int i=0; i<4; i++){
@@ -268,7 +274,7 @@ void runProg_6(){ //
 void checkRTCinterrupt(){
   int I = digitalRead(RTC_INT);
   if(I == 0){
-    rtc.callBackToAlarm2(); // reset the flag in the rtc
+    rtc.Alarm2callBack(); // reset the flag in the rtc
     Serial.println("interrupt!");
     DateTime now = rtc.now();
     if(progToRun == '4'){
